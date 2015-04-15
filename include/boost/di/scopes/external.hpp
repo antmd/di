@@ -11,6 +11,7 @@
 #include "boost/di/aux_/type_traits.hpp"
 #include "boost/di/wrappers/unique.hpp"
 #include "boost/di/wrappers/shared.hpp"
+#include "boost/di/config.hpp"
 
 namespace boost { namespace di { namespace scopes {
 
@@ -42,6 +43,8 @@ using wrapper_traits_t =
 class external {
     struct injector {
         template<class T> T create() const;
+        //core::pool<> policies() const;
+        //int provider() const;
     };
 
 public:
