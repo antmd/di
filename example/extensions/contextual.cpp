@@ -68,6 +68,8 @@ struct type_;
 
 template<class... Ts>
 struct type_<di::aux::type_list<Ts...>> {
+    using element_type = di::aux::type_list<Ts...>;
+
     template<class T>
     auto type() {
         return std::make_unique<type_<di::aux::type_list<Ts..., T>>>();
@@ -76,6 +78,8 @@ struct type_<di::aux::type_list<Ts...>> {
 
 template<class T>
 struct type {
+    using element_type = di::aux::type_list<T>;
+
     auto operator->() const {
         return std::make_unique<type_<di::aux::type_list<T>>>();
     }
@@ -101,7 +105,7 @@ context_ context;
 
 template<class T, class R>
 struct all {
-    using type = T;
+    using type = R;
     T object;
 };
 
@@ -114,7 +118,7 @@ struct then_ {
 };
 
 template<class T>
-then_<T> when(T&&) {
+then_<typename T::element_type> when(T&&) {
     return {};
 }
 
@@ -122,35 +126,48 @@ template<class TResult>
 struct contextual {
     template<class... Ts>
     explicit contextual(Ts&&... args)
-        : types{std::make_pair(&typeid(typename Ts::type), args.object)...}
+        : types{std::make_pair(create_types(typename Ts::type{}), args.object)...}
     { }
 
-    template<class... TCtor>
-    using make_type_list = di::aux::type_list<typename get_type<TCtor>::type...>;
+    template<class... Ts>
+    std::vector<const std::type_info*> create_types(const di::aux::type_list<Ts...>&) const {
+        return {&typeid(Ts)...};
+    }
 
     template<class TInjector>
     auto operator()(const TInjector& injector) const -> TResult {
-        const auto& types = injector.types;
-        //const auto it = types.find(&typeid(make_type_list<TCtor...>));
-        //std::cout << typeid(make_type_list<TCtor...>).name() << std::endl;
-        //if (it != types.end()) {
-            //std::cout << "dupa: " << it->second << std::endl;
-            //return it->second;
-        //}
+        const auto& call_stack = injector.types;
 
-        return 42;
+        for (const auto& el : types) {
+            auto level = 0;
+            auto found = true;
+            for (const auto& t : el.first) {
+                const auto& cs = call_stack.at(level);
+                if (std::find(cs.begin(), cs.end(), t) == cs.end()) {
+                    found = false;
+                    break;
+                }
+                ++level;
+            }
+
+            if (found) {
+                return el.second;
+            }
+        }
+
+        return {};
     }
 
-    std::map<const std::type_info*, TResult> types;
+    std::vector<std::pair<std::vector<const std::type_info*>, TResult>> types;
 };
 
 int main() {
     auto injector = di::make_injector<build_types>(
         di::bind<int>.to(
             contextual<int>{
-                when(context = type<a>()).then(1)
-              //, when(context = type<a>() -> type<b>()).then(2)
-              //, when(context = type<a>() -> type<b>() -> type<c>()).then(3)
+                when(context = type<a>() -> type<b>() -> type<c>()).then(3)
+              , when(context = type<a>() -> type<b>()).then(2)
+              , when(context = type<a>()).then(1)
             }
         )
     );
